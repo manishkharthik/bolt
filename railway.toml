@@ -1,0 +1,14 @@
+# Railway deployment config for bolt (wcbot).
+# Build from the Dockerfile; run exactly ONE replica (long-polling allows only one poller per
+# bot token — a second instance causes Telegram 409 Conflict).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+healthcheckPath = "/health"
+healthcheckTimeout = 100
