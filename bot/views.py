@@ -105,7 +105,7 @@ def daily_blast(day: dt.date, entries: list[DayEntry]) -> str:
     return (
         f"⚽ <b>Bolt Daily Slate: {fmt_date_long(day)}</b> ⚽\n"
         f"{SEP}\n"
-        "Good morning! Here are today's World Cup matchups.\n"
+        "It's a new day! Here are today's World Cup matchups.\n"
         "Tap the buttons below to lock in your scorelines and player wagers.\n\n"
         "⚠️ <i>Lockdown happens exactly 1 hour before each kickoff!</i>\n\n"
         "📅 TODAY'S SLATE (SGT):\n\n"
@@ -122,7 +122,7 @@ def slacker_warning(day: dt.date, entries: list[DayEntry]) -> str:
     return (
         "🚨 <b>BOLT LOCKDOWN WARNING!</b> 🚨\n"
         f"{SEP}\n"
-        "The first game of the day kicks off in 2 hours! Your daily predictions and wagers "
+        "The first game of the day kicks off in 4 hours! Your daily predictions and wagers "
         "are currently incomplete.\n\n"
         "Please lock in your choices below before the respective 1-hour pre-game deadlines hit.\n\n"
         "📅 YOUR INCOMPLETE SLATE (SGT):\n\n"
