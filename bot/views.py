@@ -226,6 +226,7 @@ def matchday(day: dt.date, matches: list[Match]) -> str:
         SEP,
         "Here is the official World Cup schedule for this matchday.",
         "All times are displayed in Singapore Time (SGT).",
+        "Predictions and wagers for all matches open 8 hours before the earliest match kickoff.",
         "",
         "⚽ TODAY'S FIXTURES:",
         "",
