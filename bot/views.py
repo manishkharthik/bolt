@@ -420,7 +420,7 @@ def leaderboard(group_name: str, rows: list) -> str:
     lines.append("")
     lines.append(SEP)
     lines.append(
-        "📊 Use /daily to re-view the latest matchday or /individual for match-by-match "
+        "📊 Use /daily to re-view standings for just this matchday or /individual for match-by-match "
         "breakdowns!"
     )
     return "\n".join(lines)
@@ -446,15 +446,9 @@ def daily_reveal(group_name: str, day: dt.date, snapshot_rows: list) -> str:
     lines.append("")
     lines.append(SEP)
     lines.append(
-        "📊 Use /daily to re-view tonight's scores or /individual to see the match-by-match "
-        "point breakdowns for everyone!"
-    )
-    lines.append("")
-    lines.append(
-        "⚠️ <b>Heads up:</b> earlier wager breakdowns and summaries may have shown some wagers "
-        "as voided incorrectly. This has since been fixed and the points earned shown above are "
-        "accurate. If anything looks off or you need clarification, please use /feedback to let "
-        "us know!"
+        "📊 Use /daily to re-view standings for just this matchday or /individual to see the match-by-match "
+        "point breakdowns for everyone! To see your personal breakdown for this matchday, go to "
+        "your private DM and type /recap "
     )
     return "\n".join(lines)
 

@@ -50,7 +50,7 @@ PRIVATE_COMMANDS = [
     BotCommand(command="status", description="Make, view or edit predictions"),
     BotCommand(command="timeline", description="Time until each game locks"),
     BotCommand(command="groups", description="Your leagues and rankings"),
-    BotCommand(command="breakdown", description="Your points so far"),
+    BotCommand(command="breakdown", description="Your points so far for this matchday"),
     BotCommand(command="recap", description="Last matchday's results & your points"),
     BotCommand(command="feedback", description="Send feedback (I'll ask for your message)"),
 ]

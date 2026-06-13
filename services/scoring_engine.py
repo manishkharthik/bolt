@@ -77,6 +77,22 @@ def _normalize_name(name: str) -> str:
     return " ".join(stripped.casefold().split())
 
 
+def _initial_key(name: str) -> str:
+    """Collapse a name to '<first-initial> <surname...>' for cross-source matching.
+
+    The wager picker stores full names ('Christian Pulisic') but the fixture-stats API
+    abbreviates the first name ('C. Pulišić'). Normalizing both to the first-name initial
+    plus the remaining tokens lets them match: both become 'c pulisic'. Compound surnames
+    survive too ('Kevin De Bruyne' / 'K. De Bruyne' -> 'k de bruyne').
+    """
+    tokens = _normalize_name(name).replace(".", "").split()
+    if not tokens:
+        return ""
+    if len(tokens) == 1:
+        return tokens[0]
+    return tokens[0][0] + " " + " ".join(tokens[1:])
+
+
 def score_wager(wager_type: str, stat: PlayerMatchStat | None) -> tuple[str, int]:
     """Return (wager_status, points) for one wager given the player's match stats.
 
@@ -132,10 +148,15 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
     if any(w.wager_status == WAGER_PENDING for w in wagers):
         stats = await sports_api.get_fixture_player_stats(match.match_id)
         # The world_cup_players.api_player_id column is from a different id namespace than the
-        # fixture stats, so it can't be used to join. Match on normalized player name instead.
+        # fixture stats, so it can't be used to join. Match on player name instead. The wager
+        # picker stores full names but the stats API abbreviates the first name, so we try an
+        # exact normalized match first and fall back to the first-initial + surname key.
         stat_by_name = {_normalize_name(s.player_name): s for s in stats.values()}
+        stat_by_initial = {_initial_key(s.player_name): s for s in stats.values()}
         for wager in wagers:
-            stat = stat_by_name.get(_normalize_name(wager.player_name))
+            stat = stat_by_name.get(_normalize_name(wager.player_name)) or (
+                stat_by_initial.get(_initial_key(wager.player_name))
+            )
             wager.wager_status, wager.calculated_points = score_wager(
                 wager.wager_type, stat
             )
