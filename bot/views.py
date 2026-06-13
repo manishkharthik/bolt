@@ -436,6 +436,7 @@ def daily_reveal(group_name: str, day: dt.date, snapshot_rows: list) -> str:
         "",
         "🏆 OVERALL CHAMPIONSHIP LEADERBOARD:",
         "",
+        ""
     ]
     for i, s in enumerate(rows, start=1):
         lines.append(
@@ -447,6 +448,13 @@ def daily_reveal(group_name: str, day: dt.date, snapshot_rows: list) -> str:
     lines.append(
         "📊 Use /daily to re-view tonight's scores or /individual to see the match-by-match "
         "point breakdowns for everyone!"
+    )
+    lines.append("")
+    lines.append(
+        "⚠️ <b>Heads up:</b> earlier wager breakdowns and summaries may have shown some wagers "
+        "as voided incorrectly. This has since been fixed and the points earned shown above are "
+        "accurate. If anything looks off or you need clarification, please use /feedback to let "
+        "us know!"
     )
     return "\n".join(lines)
 

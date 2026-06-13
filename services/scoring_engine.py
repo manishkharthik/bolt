@@ -19,6 +19,7 @@ identical results because every value is recomputed and overwritten, never accum
 from __future__ import annotations
 
 import logging
+import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +35,6 @@ from database.models import (
     Match,
     Prediction,
     Wager,
-    WorldCupPlayer,
 )
 from services.sports_api import PlayerMatchStat, sports_api
 
@@ -66,12 +66,28 @@ def score_prediction(
     return POINTS_CORRECT_RESULT + (POINTS_EXACT_BONUS if exact else 0)
 
 
+def _normalize_name(name: str) -> str:
+    """Casefold + strip diacritics so 'Edin Dzeko' matches the API's 'Edin Džeko'.
+
+    The wager picker and the fixture stats come from different data sources whose spellings
+    differ on accents/case, so we match players on a normalized name rather than an id.
+    """
+    decomposed = unicodedata.normalize("NFKD", name)
+    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return " ".join(stripped.casefold().split())
+
+
 def score_wager(wager_type: str, stat: PlayerMatchStat | None) -> tuple[str, int]:
     """Return (wager_status, points) for one wager given the player's match stats.
 
-    If the player has no stats or played 0 minutes, the wager is VOID (0 points).
+    A player who played 0 minutes is VOID (0 points). If we could not resolve the player to
+    any fixture stat (stat is None), we leave the wager PENDING rather than voiding it — an
+    unresolved player is a data problem, not a real 0-minute outcome, and PENDING lets the
+    next scoring tick retry instead of silently zeroing the wager.
     """
-    if stat is None or stat.minutes == 0:
+    if stat is None:
+        return WAGER_PENDING, 0
+    if stat.minutes == 0:
         return WAGER_VOID, 0
     if wager_type == WAGER_SCORE:
         hit = stat.goals >= 1
@@ -80,15 +96,6 @@ def score_wager(wager_type: str, stat: PlayerMatchStat | None) -> tuple[str, int
     return (WAGER_HIT, POINTS_WAGER_HIT) if hit else (WAGER_MISSED, POINTS_WAGER_MISS)
 
 
-async def _player_name_to_api_id(session: AsyncSession) -> dict[str, int]:
-    """Map world_cup_players.player_name -> api_player_id for resolving wagers by name.
-
-    Wagers store player_name (free text from the picker); player stats are keyed by API id.
-    """
-    rows = await session.execute(
-        select(WorldCupPlayer.player_name, WorldCupPlayer.api_player_id)
-    )
-    return {name: api_id for name, api_id in rows.all()}
 
 
 async def score_match(session: AsyncSession, match: Match) -> bool:
@@ -124,10 +131,11 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
     wagers = list(wager_rows.scalars().all())
     if any(w.wager_status == WAGER_PENDING for w in wagers):
         stats = await sports_api.get_fixture_player_stats(match.match_id)
-        name_to_id = await _player_name_to_api_id(session)
+        # The world_cup_players.api_player_id column is from a different id namespace than the
+        # fixture stats, so it can't be used to join. Match on normalized player name instead.
+        stat_by_name = {_normalize_name(s.player_name): s for s in stats.values()}
         for wager in wagers:
-            api_id = name_to_id.get(wager.player_name)
-            stat = stats.get(api_id) if api_id is not None else None
+            stat = stat_by_name.get(_normalize_name(wager.player_name))
             wager.wager_status, wager.calculated_points = score_wager(
                 wager.wager_type, stat
             )
