@@ -12,7 +12,8 @@ from __future__ import annotations
 import datetime as dt
 import logging
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -130,16 +131,50 @@ async def _status_payload(user_id: int):
     return day, entries, None
 
 
-async def _resend_status(callback: CallbackQuery) -> None:
-    """Re-render the slate after a game is filled in (as a fresh message)."""
+async def _safe_delete(bot: Bot, chat_id: int, message_id: int) -> None:
+    """Delete a message, tolerating it being already gone / too old."""
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except TelegramBadRequest:
+        pass
+
+
+async def _safe_edit(
+    bot: Bot, chat_id: int, message_id: int, text: str, reply_markup=None
+) -> None:
+    """Edit a message in place. Ignore no-op edits; if the message can't be edited
+    (deleted / too old), fall back to a fresh message so the flow never dead-ends."""
+    try:
+        await bot.edit_message_text(
+            text, chat_id=chat_id, message_id=message_id, reply_markup=reply_markup
+        )
+    except TelegramBadRequest as exc:
+        if "not modified" in str(exc).lower():
+            return
+        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+
+
+async def _safe_edit_callback(callback: CallbackQuery, text: str, reply_markup=None) -> None:
+    """Edit the message a callback fired on (the rolling prompt) in place."""
+    await _safe_edit(
+        callback.bot, callback.message.chat.id, callback.message.message_id, text, reply_markup
+    )
+
+
+async def _refresh_slate(callback: CallbackQuery, slate_message_id: int, chat_id: int) -> None:
+    """Edit the original slate in place after a game is filled in."""
     payload = await _status_payload(callback.from_user.id)
     if payload is None:
         return
     day, entries, open_at = payload
     if open_at is not None:
         return
-    await callback.message.answer(
-        views.status(day, entries), reply_markup=kb.slate_keyboard(entries)
+    await _safe_edit(
+        callback.bot,
+        chat_id,
+        slate_message_id,
+        views.status(day, entries),
+        reply_markup=kb.slate_keyboard(entries),
     )
 
 
@@ -172,22 +207,47 @@ async def pick_match(callback: CallbackQuery, state: FSMContext) -> None:
             session, callback.from_user.id, match_id
         )
     drafts = [{"player_name": w.player_name, "wager_type": w.wager_type} for w in existing]
-    await state.update_data(match_id=match_id, wager_drafts=drafts)
+
+    # Clean up any prompt left over from an abandoned flow before starting a new one.
+    prior = await state.get_data()
+    if (stale := prior.get("prompt_message_id")) and (chat := prior.get("chat_id")):
+        await _safe_delete(callback.bot, chat, stale)
+
+    prompt = await callback.message.answer(
+        "Enter your predicted score as <b>home-away</b> (e.g. 2-1):"
+    )
+    await state.update_data(
+        match_id=match_id,
+        wager_drafts=drafts,
+        slate_message_id=callback.message.message_id,
+        chat_id=callback.message.chat.id,
+        prompt_message_id=prompt.message_id,
+    )
     await state.set_state(PredictionFlow.entering_score)
-    await callback.message.answer("Enter your predicted score as <b>home-away</b> (e.g. 2-1):")
     await callback.answer()
 
 
 @router.message(PredictionFlow.entering_score)
 async def enter_score(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    chat_id = data["chat_id"]
+    prompt_id = data["prompt_message_id"]
+
     raw = (message.text or "").strip().replace(" ", "")
+    await _safe_delete(message.bot, chat_id, message.message_id)
+
     parts = raw.replace(":", "-").split("-")
     if len(parts) != 2 or not all(p.isdigit() for p in parts):
-        await message.answer("Please use the format <b>home-away</b>, e.g. 2-1.")
+        await _safe_edit(
+            message.bot,
+            chat_id,
+            prompt_id,
+            "Enter your predicted score as <b>home-away</b> (e.g. 2-1):\n\n"
+            "⚠️ Please use the format <b>home-away</b>, e.g. 2-1.",
+        )
         return
     home, away = int(parts[0]), int(parts[1])
 
-    data = await state.get_data()
     match_id = data["match_id"]
     try:
         async with session_scope() as session:
@@ -195,13 +255,16 @@ async def enter_score(message: Message, state: FSMContext) -> None:
                 session, message.from_user.id, match_id, home, away
             )
     except PredictionError as exc:
-        await message.answer(f"⚠️ {exc}")
+        await _safe_edit(message.bot, chat_id, prompt_id, f"⚠️ {exc}")
         await state.clear()
         return
 
     drafts = data.get("wager_drafts", [])
     await state.set_state(PredictionFlow.adding_wagers)
-    await message.answer(
+    await _safe_edit(
+        message.bot,
+        chat_id,
+        prompt_id,
         f"✅ Saved <b>{home} - {away}</b>.\n\n{_wager_step_text(drafts)}",
         reply_markup=kb.wager_decision_keyboard(match_id, drafts),
     )
@@ -210,7 +273,7 @@ async def enter_score(message: Message, state: FSMContext) -> None:
 @router.callback_query(F.data == f"{kb.CB_PLAYER}:search")
 async def prompt_player_search(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(PredictionFlow.searching_player)
-    await callback.message.answer("Type part of a player's name to search:")
+    await _safe_edit_callback(callback, "Type part of a player's name to search:")
     await callback.answer()
 
 
@@ -218,16 +281,31 @@ async def prompt_player_search(callback: CallbackQuery, state: FSMContext) -> No
 async def search_player(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     match_id = data.get("match_id")
+    chat_id = data["chat_id"]
+    prompt_id = data["prompt_message_id"]
+
+    await _safe_delete(message.bot, chat_id, message.message_id)
+
     async with session_scope() as session:
         players = await predictions_service.search_players(
             session, message.text or "", match_id=match_id
         )
     if not players:
-        await message.answer(
-            "No matching players from the two teams in this game. Try a different spelling."
+        await _safe_edit(
+            message.bot,
+            chat_id,
+            prompt_id,
+            "Type part of a player's name to search:\n\n"
+            "⚠️ No matching players from the two teams in this game. Try a different spelling.",
         )
         return
-    await message.answer("Pick a player:", reply_markup=kb.player_results_keyboard(players))
+    await _safe_edit(
+        message.bot,
+        chat_id,
+        prompt_id,
+        "Pick a player:",
+        reply_markup=kb.player_results_keyboard(players),
+    )
 
 
 @router.callback_query(F.data.startswith(f"{kb.CB_PLAYER}:"))
@@ -235,8 +313,8 @@ async def pick_player(callback: CallbackQuery, state: FSMContext) -> None:
     _, raw_id = callback.data.split(":", 1)
     if raw_id == "search":  # handled by prompt_player_search
         return
-    await callback.message.answer(
-        "Wager on this player to:", reply_markup=kb.wager_type_keyboard(int(raw_id))
+    await _safe_edit_callback(
+        callback, "Wager on this player to:", reply_markup=kb.wager_type_keyboard(int(raw_id))
     )
     await callback.answer()
 
@@ -272,13 +350,14 @@ async def pick_wager_type(callback: CallbackQuery, state: FSMContext) -> None:
                 [(d["player_name"], d["wager_type"]) for d in drafts],
             )
     except PredictionError as exc:
-        await callback.message.answer(f"⚠️ {exc}")
-        await callback.answer()
+        drafts.pop()  # roll back the in-memory add that failed to persist
+        await callback.answer(str(exc), show_alert=True)
         return
 
     await state.update_data(wager_drafts=drafts)
     await state.set_state(PredictionFlow.adding_wagers)
-    await callback.message.answer(
+    await _safe_edit_callback(
+        callback,
         f"✅ Wager added: <b>{views.esc(player.player_name)}</b> to {wager_type.lower()}.\n\n"
         f"{_wager_step_text(drafts)}",
         reply_markup=kb.wager_decision_keyboard(match_id, drafts),
@@ -312,13 +391,21 @@ async def remove_wager(callback: CallbackQuery, state: FSMContext) -> None:
 
     await state.update_data(wager_drafts=drafts)
     await callback.answer(f"Removed {removed['player_name']}")
-    await callback.message.answer(
-        _wager_step_text(drafts), reply_markup=kb.wager_decision_keyboard(match_id, drafts)
+    await _safe_edit_callback(
+        callback,
+        _wager_step_text(drafts),
+        reply_markup=kb.wager_decision_keyboard(match_id, drafts),
     )
 
 
 @router.callback_query(F.data.startswith(f"{kb.CB_DONE_WAGERS}:"))
 async def finish_match(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    slate_message_id = data.get("slate_message_id")
+    chat_id = data.get("chat_id")
     await state.clear()
     await callback.answer("Saved! ✅")
-    await _resend_status(callback)
+    # Remove the rolling prompt, then refresh the original slate in place.
+    await _safe_delete(callback.bot, callback.message.chat.id, callback.message.message_id)
+    if slate_message_id is not None and chat_id is not None:
+        await _refresh_slate(callback, slate_message_id, chat_id)
