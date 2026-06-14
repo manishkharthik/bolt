@@ -427,8 +427,17 @@ def leaderboard(group_name: str, rows: list) -> str:
     return "\n".join(lines)
 
 
-def daily_reveal(group_name: str, day: dt.date, snapshot_rows: list) -> str:
-    """Group-chat reveal after all of a matchday's games finish. snapshot_rows: MatchdaySnapshot."""
+def daily_reveal(
+    group_name: str,
+    day: dt.date,
+    snapshot_rows: list,
+    next_open_at: dt.datetime | None = None,
+) -> str:
+    """Group-chat reveal after all of a matchday's games finish. snapshot_rows: MatchdaySnapshot.
+
+    next_open_at: when predictions for the next matchday open (T-8h before its first kickoff), or
+    None if there is no upcoming matchday. Shown as a closing note.
+    """
     rows = sorted(snapshot_rows, key=lambda s: s.cumulative_total_points, reverse=True)
     lines = [
         f"🔔 <b>BOLT DAILY REVEAL: {day:%d %B}</b> 🔔",
@@ -451,6 +460,12 @@ def daily_reveal(group_name: str, day: dt.date, snapshot_rows: list) -> str:
         "point breakdowns for everyone! To see your personal breakdown for this matchday, go to "
         "your private DM and type /recap "
     )
+    if next_open_at is not None:
+        lines.append("")
+        lines.append(
+            f"⏰ Predictions for the next matchday open on {fmt_date_long(_sgt(next_open_at).date())} "
+            f"at {fmt_time(next_open_at)} — the bot will DM every user the slate then. Be ready! ⚽"
+        )
     return "\n".join(lines)
 
 

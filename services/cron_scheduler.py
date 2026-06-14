@@ -23,6 +23,7 @@ import logging
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 
 from bot import keyboards as kb
@@ -66,10 +67,12 @@ def init_scheduler(bot: Bot) -> AsyncIOScheduler:
     )
 
     # Daily Blast (T-8h) and Slacker Warning (T-4h), anchored to the matchday's first kickoff.
+    # Fires at :00 of every minute, phase-locked to the wall clock (not to process start) so the
+    # tick that catches a target time lands within 60s of it — exactly on time when the target is
+    # on a minute boundary (the normal case).
     scheduler.add_job(
         _job_daily_ticks,
-        "interval",
-        minutes=30,
+        trigger=CronTrigger(second=0, timezone=settings.tzinfo),
         id="daily_ticks",
         replace_existing=True,
     )
@@ -130,7 +133,7 @@ async def _job_daily_ticks() -> None:
 
         blast_at = first - dt.timedelta(hours=matches_service.PREDICTION_WINDOW_HOURS)
         slacker_at = first - dt.timedelta(hours=4)
-        window = dt.timedelta(minutes=30)  # matches the tick interval
+        window = dt.timedelta(minutes=1)  # matches the 1-minute tick spacing → fires exactly once
 
         if blast_at <= now < blast_at + window:
             await _run_daily_blast(day)
@@ -197,9 +200,14 @@ async def run_daily_reveal(day: dt.date) -> None:
             )
             reveals.append((group.telegram_chat_id, group.group_name, snapshots))
 
+        # With this matchday's games all finished, focus rolls forward to the next unfinished
+        # matchday; predictions for it open PREDICTION_WINDOW_HOURS before its first kickoff.
+        _, next_slate = await matches_service.get_current_matchday(session)
+        next_open_at = matches_service.prediction_window_open_at(next_slate)
+
     # Send after the snapshot transaction has committed.
     for chat_id, group_name, snapshots in reveals:
-        text = views.daily_reveal(group_name, day, snapshots)
+        text = views.daily_reveal(group_name, day, snapshots, next_open_at)
         await _safe_send(chat_id, text)
         logger.info("Daily Reveal: posted to group %s for %s", chat_id, day)
 
