@@ -18,6 +18,7 @@ identical results because every value is recomputed and overwritten, never accum
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import unicodedata
 
@@ -25,8 +26,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.db import session_scope
+from config.settings import settings
 from database.models import (
     MATCH_FINISHED,
+    WAGER_CARD,
     WAGER_HIT,
     WAGER_MISSED,
     WAGER_PENDING,
@@ -43,7 +46,13 @@ logger = logging.getLogger(__name__)
 POINTS_CORRECT_RESULT = 50
 POINTS_EXACT_BONUS = 150  # additional, on top of correct result
 POINTS_WAGER_HIT = 100
-POINTS_WAGER_MISS = -100
+POINTS_WAGER_MISS = -50  # current rule, for matches from WAGER_MISS_RULE_CHANGE_DATE onward
+POINTS_WAGER_MISS_LEGACY = -100  # matches kicking off before the rule change
+
+# The miss penalty was reduced from -100 to -50 to incentivise wagering. The change applies only
+# to matches kicking off on or after this date (SGT); earlier matches keep the -100 penalty so
+# already-played games are scored under the rule that was in force when they were played.
+WAGER_MISS_RULE_CHANGE_DATE = dt.date(2026, 6, 18)
 
 
 def _sign(diff: int) -> int:
@@ -93,13 +102,20 @@ def _initial_key(name: str) -> str:
     return tokens[0][0] + " " + " ".join(tokens[1:])
 
 
-def score_wager(wager_type: str, stat: PlayerMatchStat | None) -> tuple[str, int]:
+def score_wager(
+    wager_type: str,
+    stat: PlayerMatchStat | None,
+    miss_points: int = POINTS_WAGER_MISS,
+) -> tuple[str, int]:
     """Return (wager_status, points) for one wager given the player's match stats.
 
     A player who played 0 minutes is VOID (0 points). If we could not resolve the player to
     any fixture stat (stat is None), we leave the wager PENDING rather than voiding it — an
     unresolved player is a data problem, not a real 0-minute outcome, and PENDING lets the
     next scoring tick retry instead of silently zeroing the wager.
+
+    ``miss_points`` is the penalty for an incorrect wager; it varies by match kickoff date
+    (see WAGER_MISS_RULE_CHANGE_DATE), so the caller passes the value for this match.
     """
     if stat is None:
         return WAGER_PENDING, 0
@@ -107,10 +123,20 @@ def score_wager(wager_type: str, stat: PlayerMatchStat | None) -> tuple[str, int
         return WAGER_VOID, 0
     if wager_type == WAGER_SCORE:
         hit = stat.goals >= 1
+    elif wager_type == WAGER_CARD:
+        # "Booked" = any card, yellow or red.
+        hit = stat.yellow_cards >= 1 or stat.red_cards >= 1
     else:  # ASSIST
         hit = stat.assists >= 1
-    return (WAGER_HIT, POINTS_WAGER_HIT) if hit else (WAGER_MISSED, POINTS_WAGER_MISS)
+    return (WAGER_HIT, POINTS_WAGER_HIT) if hit else (WAGER_MISSED, miss_points)
 
+
+def _miss_points_for(match: Match) -> int:
+    """The incorrect-wager penalty in force for this match, by its kickoff date (SGT)."""
+    kickoff_date = match.kickoff_time.astimezone(settings.tzinfo).date()
+    if kickoff_date >= WAGER_MISS_RULE_CHANGE_DATE:
+        return POINTS_WAGER_MISS
+    return POINTS_WAGER_MISS_LEGACY
 
 
 
@@ -153,12 +179,13 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
         # exact normalized match first and fall back to the first-initial + surname key.
         stat_by_name = {_normalize_name(s.player_name): s for s in stats.values()}
         stat_by_initial = {_initial_key(s.player_name): s for s in stats.values()}
+        miss_points = _miss_points_for(match)
         for wager in wagers:
             stat = stat_by_name.get(_normalize_name(wager.player_name)) or (
                 stat_by_initial.get(_initial_key(wager.player_name))
             )
             wager.wager_status, wager.calculated_points = score_wager(
-                wager.wager_type, stat
+                wager.wager_type, stat, miss_points
             )
 
     logger.info("score_match: scored match %s", match.match_id)

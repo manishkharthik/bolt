@@ -22,7 +22,7 @@ from services import matches_service
 logger = logging.getLogger(__name__)
 
 MAX_WAGERS_PER_MATCH = 3
-VALID_WAGER_TYPES = {"SCORE", "ASSIST"}
+VALID_WAGER_TYPES = {"SCORE", "ASSIST", "CARD"}
 
 
 class PredictionError(Exception):
@@ -165,7 +165,8 @@ async def set_wagers(
         if (player, wager_type) in seen:
             raise PredictionError(
                 f"You already have a {wager_type} wager on {player}. "
-                f"You can wager the same player to SCORE and to ASSIST, but not the same one twice."
+                f"You can wager the same player on different outcomes (SCORE / ASSIST / CARD), "
+                f"but not the same one twice."
             )
         seen.add((player, wager_type))
 

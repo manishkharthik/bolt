@@ -205,9 +205,18 @@ async def run_daily_reveal(day: dt.date) -> None:
         _, next_slate = await matches_service.get_current_matchday(session)
         next_open_at = matches_service.prediction_window_open_at(next_slate)
 
+    # One-off announcement of the wager rule changes, shown only on the reveal for 17 Jun 2026.
+    note = None
+    if day == dt.date(2026, 6, 17):
+        note = (
+            "📣 <b>Wager updates from tomorrow!</b> A missed wager now costs only "
+            "<b>−50</b> pts (down from −100), but you still get 100 pts for a correct wager! You can also now back a player to "
+            "<b>get booked</b> (🟨 yellow or 🟥 red card) alongside SCORE and ASSIST. Wager away!"
+        )
+
     # Send after the snapshot transaction has committed.
     for chat_id, group_name, snapshots in reveals:
-        text = views.daily_reveal(group_name, day, snapshots, next_open_at)
+        text = views.daily_reveal(group_name, day, snapshots, next_open_at, note)
         await _safe_send(chat_id, text)
         logger.info("Daily Reveal: posted to group %s for %s", chat_id, day)
 

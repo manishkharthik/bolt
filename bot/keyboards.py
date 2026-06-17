@@ -14,7 +14,7 @@ from services.predictions_service import MAX_WAGERS_PER_MATCH, DayEntry
 # Callback data prefixes (kept short; aiogram limits callback_data to 64 bytes).
 CB_MATCH = "match"          # match:<match_id>      -> fill/edit a game
 CB_LOCKED = "locked"        # locked:<match_id>     -> tapped a locked game
-CB_WAGER_TYPE = "wtype"     # wtype:<api_player_id>:<SCORE|ASSIST>
+CB_WAGER_TYPE = "wtype"     # wtype:<api_player_id>:<SCORE|ASSIST|CARD>
 CB_PLAYER = "player"        # player:<api_player_id> | player:search
 CB_REMOVE_WAGER = "wrm"     # wrm:<draft_index>     -> remove a placed wager
 CB_DONE_WAGERS = "wdone"    # wdone:<match_id>
@@ -86,6 +86,9 @@ def wager_type_keyboard(api_player_id: int) -> InlineKeyboardMarkup:
                 ),
                 InlineKeyboardButton(
                     text="🅰️ To assist", callback_data=f"{CB_WAGER_TYPE}:{api_player_id}:ASSIST"
+                ),
+                InlineKeyboardButton(
+                    text="🟨 To be booked", callback_data=f"{CB_WAGER_TYPE}:{api_player_id}:CARD"
                 ),
             ]
         ]

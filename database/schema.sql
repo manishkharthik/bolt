@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS wagers (
     telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE,
     match_id INT REFERENCES matches(match_id) ON DELETE CASCADE,
     player_name VARCHAR(150) NOT NULL,
-    wager_type VARCHAR(20) CHECK (wager_type IN ('SCORE', 'ASSIST')),
+    wager_type VARCHAR(20) CHECK (wager_type IN ('SCORE', 'ASSIST', 'CARD')),
     wager_status VARCHAR(20) DEFAULT 'PENDING' CHECK (wager_status IN ('PENDING', 'HIT', 'MISSED', 'VOID')),
     calculated_points INT DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

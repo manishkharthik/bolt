@@ -33,6 +33,7 @@ MATCH_FINISHED = "FINISHED"
 
 WAGER_SCORE = "SCORE"
 WAGER_ASSIST = "ASSIST"
+WAGER_CARD = "CARD"  # player gets booked (yellow or red card)
 
 WAGER_PENDING = "PENDING"
 WAGER_HIT = "HIT"
@@ -123,7 +124,7 @@ class Wager(Base):
     __tablename__ = "wagers"
     __table_args__ = (
         CheckConstraint(
-            "wager_type IN ('SCORE', 'ASSIST')", name="wagers_wager_type_check"
+            "wager_type IN ('SCORE', 'ASSIST', 'CARD')", name="wagers_wager_type_check"
         ),
         CheckConstraint(
             "wager_status IN ('PENDING', 'HIT', 'MISSED', 'VOID')",

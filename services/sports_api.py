@@ -54,6 +54,8 @@ class PlayerMatchStat:
     minutes: int
     goals: int
     assists: int
+    yellow_cards: int
+    red_cards: int
 
 
 def _map_status(short_code: str) -> str:
@@ -142,6 +144,7 @@ class SportsApiClient:
                 s = stat_list[0]
                 games = s.get("games") or {}
                 goals = s.get("goals") or {}
+                cards = s.get("cards") or {}
                 minutes = games.get("minutes") or 0
                 stats[player["id"]] = PlayerMatchStat(
                     api_player_id=player["id"],
@@ -149,6 +152,8 @@ class SportsApiClient:
                     minutes=int(minutes),
                     goals=int(goals.get("total") or 0),
                     assists=int(goals.get("assists") or 0),
+                    yellow_cards=int(cards.get("yellow") or 0),
+                    red_cards=int(cards.get("red") or 0),
                 )
         return stats
 

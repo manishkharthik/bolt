@@ -432,11 +432,14 @@ def daily_reveal(
     day: dt.date,
     snapshot_rows: list,
     next_open_at: dt.datetime | None = None,
+    note: str | None = None,
 ) -> str:
     """Group-chat reveal after all of a matchday's games finish. snapshot_rows: MatchdaySnapshot.
 
     next_open_at: when predictions for the next matchday open (T-8h before its first kickoff), or
     None if there is no upcoming matchday. Shown as a closing note.
+
+    note: optional one-off announcement appended at the very end (e.g. a rules change).
     """
     rows = sorted(snapshot_rows, key=lambda s: s.cumulative_total_points, reverse=True)
     lines = [
@@ -466,6 +469,10 @@ def daily_reveal(
             f"⏰ Predictions for the next matchday open on {fmt_date_long(_sgt(next_open_at).date())} "
             f"at {fmt_time(next_open_at)} — the bot will DM every user the slate then. Be ready! ⚽"
         )
+    if note:
+        lines.append("")
+        lines.append(SEP)
+        lines.append(note)
     return "\n".join(lines)
 
 
@@ -595,6 +602,7 @@ def scoring() -> str:
         f"• Up to <b>{MAX_WAGERS_PER_MATCH}</b> wagers per match.",
         "• <b>SCORE</b> wager hits if your player scores 1+ goal.",
         "• <b>ASSIST</b> wager hits if your player records 1+ assist.",
+        "• <b>CARD</b> wager hits if your player gets booked (yellow or red card).",
         f"• Hit: <b>+{POINTS_WAGER_HIT}</b> pts  |  "
         f"Miss: <b>{POINTS_WAGER_MISS}</b> pts",
         "• 🩹 Void (player plays 0 minutes): <b>0</b> pts — no deduction, no risk.",
