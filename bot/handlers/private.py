@@ -290,13 +290,18 @@ async def search_player(message: Message, state: FSMContext) -> None:
         players = await predictions_service.search_players(
             session, message.text or "", match_id=match_id
         )
+        teams = await predictions_service.get_match_teams(session, match_id)
     if not players:
+        if teams:
+            teams_note = f"Players must be from <b>{teams[0]}</b> or <b>{teams[1]}</b>."
+        else:
+            teams_note = "Players must be from the two teams in this game."
         await _safe_edit(
             message.bot,
             chat_id,
             prompt_id,
             "Type part of a player's name to search:\n\n"
-            "⚠️ No matching players from the two teams in this game. Try a different spelling.",
+            f"⚠️ No matching players found. {teams_note} Try a different spelling.",
         )
         return
     await _safe_edit(

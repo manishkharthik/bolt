@@ -98,6 +98,16 @@ async def _require_match(session: AsyncSession, match_id: int) -> Match:
     return match
 
 
+async def get_match_teams(session: AsyncSession, match_id: int | None) -> tuple[str, str] | None:
+    """Return (home_team, away_team) for a match, or None if it can't be found."""
+    if match_id is None:
+        return None
+    match = await session.get(Match, match_id)
+    if match is None:
+        return None
+    return match.home_team, match.away_team
+
+
 async def upsert_prediction(
     session: AsyncSession,
     telegram_id: int,
