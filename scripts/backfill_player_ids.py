@@ -50,8 +50,74 @@ TEAM_ALIASES = {
 
 # Last-resort manual mapping for players no tier can resolve safely:
 #   world_cup_players.api_player_id -> canonical API-Football player_id
-# Fill in from the report's "no-match" / rejected-fuzzy lines after eyeballing the squad.
-MANUAL_OVERRIDES: dict[int, int] = {}
+# Each was verified by hand against /players/squads or /players/profiles (name + nationality).
+# 16 fringe players remain unmapped (not present in the API at all) and stay NULL -> name fallback.
+MANUAL_OVERRIDES: dict[int, int] = {
+    # --- matched against the team's /players/squads list ---
+    4050427: 304229,   # Algeria: Melvin Masstil -> M. Mastil
+    44580017: 441269,  # Australia: Paul Okon Jr -> Paul Okon-Engstler
+    96903868: 280,     # Brazil: Alisson -> Alisson Becker
+    55899417: 41608,   # Cape Verde: Diney -> Diney Borges
+    87855951: 2660,    # Egypt: Nabil Emad -> Nabil Emad Dunga
+    56650764: 307123,  # England: Nico O'Reilly -> N. Oreilly
+    52755819: 21996,   # Ghana: Baba Abdul Rahman -> A. Baba
+    50860283: 303467,  # Ghana: Abdul Fatawu Issahaku -> A. Fatawu
+    52449326: 128766,  # Haiti: Don Deedson Louicius -> L. Deedson
+    697460: 2685,      # Iran: Ehsan Hajsafi -> E. Hajisafi
+    14040953: 2687,    # Iran: Hossein Kanaani -> H. Kanani
+    68713332: 533035,  # Iran: Ali Nemati ... -> A. Nemati
+    40225991: 53886,   # Iraq: Jalal Hassan -> Jalal Hassan Hachim
+    50012126: 295394,  # Iraq: Manaf Younis -> Munaf Younus
+    79472066: 626479,  # Iraq: Zaid Ismail -> Z. Ismaeel
+    95011070: 229112,  # Iraq: Ahmed Qasim -> A. Qasem
+    57515889: 542710,  # Jordan: Mohammed Abu Hashish -> M. Abu Hasheesh
+    52513921: 651096,  # Jordan: Mohammed Al-Dawoud -> M. Al Daoud
+    58398948: 542768,  # Jordan: Ibrahim Sadeh -> Ibrahim Sa'deh
+    95700263: 2702,    # Morocco: Munir El Kajoui -> M. Mohamedi (Mohamedi El Kajoui)
+    49046920: 2979,    # Panama: José Luis Rodríguez -> J. Rodríguez
+    50771410: 41112,   # Portugal: Francisco Trincão -> Trincão
+    62004026: 543059,  # Saudi Arabia: Jehad Thikri -> J. Thakri
+    60450927: 409303,  # Senegal: El Hadji Malick Diouf -> E. Diouf
+    89782268: 2990,    # Senegal: Idrissa Gana Gueye -> I. Gueye
+    26434883: 237129,  # Senegal: Pape Matar Sarr -> P. Sarr
+    22536808: 630895,  # Senegal: Bara Sapoko Ndiaye -> Bara Ndiaye
+    44024272: 2890,    # South Korea: Jo Hyun-Woo -> Jo Hyeon-Woo
+    6108996: 304951,   # South Korea: Lee Ki-Hyeok -> Lee Gi-Hyuk
+    67635333: 34168,   # South Korea: Kim Jin-Kyu -> Kim Jin-Gyu
+    78891590: 237050,  # South Korea: Um Ji-Sung -> Eom Ji-Sung
+    68015084: 34710,   # South Korea: Oh Hyun-Kyu -> Oh Hyeon-Gyu
+    20537854: 34211,   # South Korea: Cho Kyu-Sung -> Cho Gue-Sung
+    70907041: 396623,  # Spain: Pau Cubarsí -> Pau Cubarsí Paredes
+    47718202: 49423,   # Tunisia: Sabri Ben Hessen -> S. Ben Hsan
+    30661636: 533394,  # Tunisia: Abdelmouhib Chamakh -> C. Abdelmouhib
+    71585590: 135059,  # Tunisia: Mohamed Amine Ben Hamida -> A. Ben Hmida
+    2959414: 1640,     # Türkiye: Hakan Calhanoglou -> H. Çalhanoglu
+    10985028: 73514,   # Uzbekistan: Sherzod Nasrullaev -> S. Nasrullayev
+    44589340: 73520,   # Uzbekistan: Azizjon Ganiev -> A. Ganiyev
+    68797511: 72127,   # Uzbekistan: Oston Urunov -> O. Orunov
+    # --- not in the squad list; resolved via /players/profiles (name + nationality) ---
+    52887103: 6,       # Argentina: Leonardo Balerdi
+    34475448: 715,     # Austria: Christoph Baumgartner
+    23927299: 70480,   # Bosnia: Osman Hadzikic
+    81288401: 284061,  # Canada: Marcelo Flores (Flores Dorrell)
+    26027465: 425770,  # Czechia: Jan Koutny
+    77202073: 18930,   # Czechia: Matej Vydra
+    7618765: 8500,     # Japan: Wataru Endo
+    82592213: 21694,   # Morocco: Nayef Aguerd
+    15255538: 181421,  # Morocco: Abde Ezzalzouli
+    52693289: 191189,  # Ivory Coast: Clément Akpa
+    28491774: 432841,  # Jordan: Ibrahim Sabra
+    21227778: 41960,   # Portugal: Ricardo Velho
+    28362657: 130423,  # Scotland: Billy Gilmour
+    74448164: 47985,   # Sweden: Emil Holm
+    # --- same player, but first-initial guard (correctly) rejects the auto-match; verified by hand ---
+    79399651: 53902,   # Jordan: Ihsan Haddad -> Ehsan Haddad
+    94349827: 16831,   # Egypt: El Mahdy Soliman -> Al Mahdi Soliman
+    98969031: 270774,  # Mexico: Raúl Rangel (squad lists a different Rangel; id from fixture stats)
+    30138358: 38746,   # Netherlands: Jurriën Timber (brother Quinten is 38747)
+    52651819: 44309,   # Saudi Arabia: Sultan Al-Ghannam
+    38509327: 53894,   # Iraq: Mohanad Ali (listed in squad under nickname "Meme")
+}
 
 FUZZY_ACCEPT = 0.84   # minimum similarity to accept a fuzzy match
 FUZZY_MARGIN = 0.08   # best must beat the runner-up by at least this much
@@ -100,9 +166,19 @@ async def _fetch_api_squads() -> dict[str, list[tuple[int, str]]]:
     return squads
 
 
+def _first_initial(name: str) -> str:
+    tokens = _norm(name).split()
+    return tokens[0][0] if tokens else ""
+
+
+def _is_mononym(name: str) -> bool:
+    return len(_norm(name).split()) == 1
+
+
 class TeamIndex:
     def __init__(self, players: list[tuple[int, str]]) -> None:
         self.players = players
+        self.name_by_id = dict(players)
         self.by_exact: dict[str, list[int]] = defaultdict(list)
         self.by_initial: dict[str, list[int]] = defaultdict(list)
         self.by_surname: dict[str, list[int]] = defaultdict(list)
@@ -111,32 +187,48 @@ class TeamIndex:
             self.by_initial[_initial_key(name)].append(api_id)
             self.by_surname[_surname_key(name)].append(api_id)
 
+    def _initial_ok(self, name: str, api_id: int) -> bool:
+        """Guard for the loose tiers: the squad entry must be a mononym (distinctive nickname
+        like 'Trézéguet') or share the first initial. Without this, a unique surname match would
+        wrongly bind a player to a same-surname teammate (e.g. Jurriën -> Quinten Timber, or
+        Jo Yu-Min -> Son Heung-Min once the hyphen makes 'Min' look like the surname)."""
+        cand = self.name_by_id[api_id]
+        return _is_mononym(cand) or _first_initial(cand) == _first_initial(name)
+
     def resolve(self, name: str) -> tuple[int | None, str]:
-        for label, idx in (
-            ("exact", self.by_exact),
-            ("initial", self.by_initial),
-            ("surname", self.by_surname),
+        # exact + initial keys are strict (full surname tokens must match), so a unique hit is safe.
+        for label, key_fn, idx in (
+            ("exact", _norm, self.by_exact),
+            ("initial", _initial_key, self.by_initial),
         ):
-            hits = idx.get(
-                {"exact": _norm, "initial": _initial_key, "surname": _surname_key}[label](
-                    name
-                ),
-                [],
-            )
+            hits = idx.get(key_fn(name), [])
             if len(hits) == 1:
                 return hits[0], label
             if len(hits) > 1:
                 return None, f"ambiguous-{label}"
 
-        # Fuzzy fallback: best token-sorted similarity, must clear threshold + margin.
+        # surname: unique surname, but only if the first initial agrees (or squad entry is a mononym).
+        hits = self.by_surname.get(_surname_key(name), [])
+        if len(hits) == 1:
+            if self._initial_ok(name, hits[0]):
+                return hits[0], "surname"
+            return None, "surname-initial-mismatch"
+        if len(hits) > 1:
+            return None, "ambiguous-surname"
+
+        # Fuzzy fallback: best token-sorted similarity, must clear threshold + margin AND agree on
+        # the first initial (so a high score on a same-surname relative can't slip through).
         target = _sorted_tokens(name)
         scored = sorted(
             ((SequenceMatcher(None, target, _sorted_tokens(n)).ratio(), pid, n)
              for pid, n in self.players),
             reverse=True,
         )
-        if scored and scored[0][0] >= FUZZY_ACCEPT and (
-            len(scored) == 1 or scored[0][0] - scored[1][0] >= FUZZY_MARGIN
+        if (
+            scored
+            and scored[0][0] >= FUZZY_ACCEPT
+            and (len(scored) == 1 or scored[0][0] - scored[1][0] >= FUZZY_MARGIN)
+            and self._initial_ok(name, scored[0][1])
         ):
             return scored[0][1], f"fuzzy:{scored[0][0]:.2f}->{scored[0][2]}"
         return None, "no-match"
@@ -154,30 +246,25 @@ async def main(dry_run: bool) -> None:
     async with session_scope() as session:
         rows = (await session.execute(select(WorldCupPlayer))).scalars().all()
         for row in rows:
+            # final_id is what we write (None clears any stale value from a prior run).
             if row.api_player_id in MANUAL_OVERRIDES:
-                counts["manual"] += 1
-                if not dry_run:
-                    row.player_id = MANUAL_OVERRIDES[row.api_player_id]
-                continue
-
-            team_key = _norm(row.team_name)
-            team_key = TEAM_ALIASES.get(team_key, team_key)
-            index = indexes.get(team_key)
-            if index is None:
-                counts["no-team"] += 1
-                unmatched.append(f"  [no-team           ] {row.team_name:<20} {row.player_name}")
-                continue
-
-            api_id, reason = index.resolve(row.player_name)
-            tier = reason.split(":", 1)[0]
-            counts[tier] += 1
-            if api_id is None:
-                unmatched.append(f"  [{reason:<18}] {row.team_name:<20} {row.player_name}")
+                final_id, tier = MANUAL_OVERRIDES[row.api_player_id], "manual"
             else:
-                if not dry_run:
-                    row.player_id = api_id
-                if tier == "fuzzy":
-                    fuzzy_log.append(f"  [{reason}]  {row.team_name} / {row.player_name}")
+                team_key = TEAM_ALIASES.get(_norm(row.team_name), _norm(row.team_name))
+                index = indexes.get(team_key)
+                if index is None:
+                    final_id, reason, tier = None, "no-team", "no-team"
+                else:
+                    final_id, reason = index.resolve(row.player_name)
+                    tier = reason.split(":", 1)[0]
+
+            counts[tier] += 1
+            if not dry_run:
+                row.player_id = final_id  # always assign so stale wrong ids get reset to NULL
+            if final_id is None:
+                unmatched.append(f"  [{reason:<18}] {row.team_name:<20} {row.player_name}")
+            elif tier == "fuzzy":
+                fuzzy_log.append(f"  [{reason}]  {row.team_name} / {row.player_name}")
         if dry_run:
             await session.rollback()
 
