@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS wagers (
     telegram_id BIGINT REFERENCES users(telegram_id) ON DELETE CASCADE,
     match_id INT REFERENCES matches(match_id) ON DELETE CASCADE,
     player_name VARCHAR(150) NOT NULL,
+    player_id INT,  -- canonical API-Football id (same namespace as /fixtures/players); see world_cup_players.player_id
     wager_type VARCHAR(20) CHECK (wager_type IN ('SCORE', 'ASSIST', 'CARD')),
     wager_status VARCHAR(20) DEFAULT 'PENDING' CHECK (wager_status IN ('PENDING', 'HIT', 'MISSED', 'VOID')),
     calculated_points INT DEFAULT 0,
@@ -73,11 +74,15 @@ CREATE TABLE IF NOT EXISTS matchday_snapshots (
 );
 
 -- 8. Local Player Pool Table for Search Engine
+-- api_player_id is the seed source's id (NOT API-Football's stats namespace). player_id is the
+-- canonical API-Football id used for scoring joins, backfilled by scripts/backfill_player_ids.py.
 CREATE TABLE IF NOT EXISTS world_cup_players (
     api_player_id INT PRIMARY KEY,
     player_name VARCHAR(150) NOT NULL,
-    team_name VARCHAR(100) NOT NULL
+    team_name VARCHAR(100) NOT NULL,
+    player_id INT
 );
+CREATE INDEX IF NOT EXISTS idx_world_cup_players_player_id ON world_cup_players(player_id);
 
 -- 9. User Feedback Table (no FK to users: anyone, registered or not, may leave feedback)
 CREATE TABLE IF NOT EXISTS feedback (

@@ -173,17 +173,22 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
     wagers = list(wager_rows.scalars().all())
     if any(w.wager_status == WAGER_PENDING for w in wagers):
         stats = await sports_api.get_fixture_player_stats(match.match_id)
-        # The world_cup_players.api_player_id column is from a different id namespace than the
-        # fixture stats, so it can't be used to join. Match on player name instead. The wager
-        # picker stores full names but the stats API abbreviates the first name, so we try an
-        # exact normalized match first and fall back to the first-initial + surname key.
+        # Preferred join: wager.player_id is the canonical API-Football id (same namespace as
+        # the fixture stats, keyed by api_player_id here), backfilled onto world_cup_players and
+        # copied onto the wager at pick time. This is exact and immune to spelling differences.
+        # Fallback (player_id is None — legacy wagers, or players whose id wasn't backfilled):
+        # match on player name. The picker stores full names but the stats API abbreviates the
+        # first name, so try an exact normalized match first, then the first-initial + surname key.
         stat_by_name = {_normalize_name(s.player_name): s for s in stats.values()}
         stat_by_initial = {_initial_key(s.player_name): s for s in stats.values()}
         miss_points = _miss_points_for(match)
         for wager in wagers:
-            stat = stat_by_name.get(_normalize_name(wager.player_name)) or (
-                stat_by_initial.get(_initial_key(wager.player_name))
-            )
+            if wager.player_id is not None and wager.player_id in stats:
+                stat = stats[wager.player_id]
+            else:
+                stat = stat_by_name.get(_normalize_name(wager.player_name)) or (
+                    stat_by_initial.get(_initial_key(wager.player_name))
+                )
             wager.wager_status, wager.calculated_points = score_wager(
                 wager.wager_type, stat, miss_points
             )

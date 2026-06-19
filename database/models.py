@@ -140,6 +140,10 @@ class Wager(Base):
         Integer, ForeignKey("matches.match_id", ondelete="CASCADE")
     )
     player_name: Mapped[str] = mapped_column(String(150), nullable=False)
+    # Canonical API-Football player id (matches /fixtures/players), copied from the picked
+    # world_cup_players row. Nullable: legacy wagers placed before this column existed stay
+    # NULL and fall back to name matching in the scoring engine.
+    player_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     wager_type: Mapped[str] = mapped_column(String(20))
     wager_status: Mapped[str] = mapped_column(String(20), default=WAGER_PENDING)
     calculated_points: Mapped[int] = mapped_column(Integer, default=0)
@@ -173,6 +177,9 @@ class WorldCupPlayer(Base):
     api_player_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     player_name: Mapped[str] = mapped_column(String(150), nullable=False)
     team_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Canonical API-Football player id (same namespace as /fixtures/players). Backfilled once by
+    # scripts/backfill_player_ids.py; distinct from api_player_id, which is from another source.
+    player_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Feedback(Base):

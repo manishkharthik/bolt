@@ -206,7 +206,10 @@ async def pick_match(callback: CallbackQuery, state: FSMContext) -> None:
         existing = await predictions_service.get_user_wagers(
             session, callback.from_user.id, match_id
         )
-    drafts = [{"player_name": w.player_name, "wager_type": w.wager_type} for w in existing]
+    drafts = [
+        {"player_id": w.player_id, "player_name": w.player_name, "wager_type": w.wager_type}
+        for w in existing
+    ]
 
     # Clean up any prompt left over from an abandoned flow before starting a new one.
     prior = await state.get_data()
@@ -344,7 +347,13 @@ async def pick_wager_type(callback: CallbackQuery, state: FSMContext) -> None:
         )
         return
 
-    drafts.append({"player_name": player.player_name, "wager_type": wager_type})
+    drafts.append(
+        {
+            "player_id": player.player_id,
+            "player_name": player.player_name,
+            "wager_type": wager_type,
+        }
+    )
 
     try:
         async with session_scope() as session:
@@ -352,7 +361,7 @@ async def pick_wager_type(callback: CallbackQuery, state: FSMContext) -> None:
                 session,
                 callback.from_user.id,
                 match_id,
-                [(d["player_name"], d["wager_type"]) for d in drafts],
+                [(d.get("player_id"), d["player_name"], d["wager_type"]) for d in drafts],
             )
     except PredictionError as exc:
         drafts.pop()  # roll back the in-memory add that failed to persist
@@ -387,7 +396,7 @@ async def remove_wager(callback: CallbackQuery, state: FSMContext) -> None:
                 session,
                 callback.from_user.id,
                 match_id,
-                [(d["player_name"], d["wager_type"]) for d in drafts],
+                [(d.get("player_id"), d["player_name"], d["wager_type"]) for d in drafts],
             )
     except PredictionError as exc:
         drafts.insert(idx, removed)  # roll back the in-memory removal

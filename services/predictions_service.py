@@ -152,9 +152,13 @@ async def set_wagers(
     session: AsyncSession,
     telegram_id: int,
     match_id: int,
-    wagers: list[tuple[str, str]],
+    wagers: list[tuple[int | None, str, str]],
 ) -> list[Wager]:
-    """Replace a user's wagers for a match with the given (player_name, wager_type) list.
+    """Replace a user's wagers for a match with the given (player_id, player_name, wager_type) list.
+
+    ``player_id`` is the canonical API-Football id from the picked world_cup_players row; it lets
+    the scoring engine join to fixture stats by id instead of by name. It may be None for players
+    whose id wasn't backfilled (those still score via the name fallback).
 
     Enforces the max of 3 wagers per match, valid wager types, and no duplicate
     (player, wager_type) pairs (the same player to SCORE and to ASSIST is allowed). Rejected if
@@ -169,7 +173,7 @@ async def set_wagers(
     if len(wagers) > MAX_WAGERS_PER_MATCH:
         raise PredictionError(f"You can place at most {MAX_WAGERS_PER_MATCH} wagers per match.")
     seen: set[tuple[str, str]] = set()
-    for player, wager_type in wagers:
+    for _player_id, player, wager_type in wagers:
         if wager_type not in VALID_WAGER_TYPES:
             raise PredictionError(f"Unknown wager type: {wager_type}.")
         if (player, wager_type) in seen:
@@ -189,10 +193,11 @@ async def set_wagers(
         await session.delete(wager)
 
     created: list[Wager] = []
-    for player_name, wager_type in wagers:
+    for player_id, player_name, wager_type in wagers:
         wager = Wager(
             telegram_id=telegram_id,
             match_id=match_id,
+            player_id=player_id,
             player_name=player_name,
             wager_type=wager_type,
         )
