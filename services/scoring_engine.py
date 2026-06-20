@@ -106,19 +106,24 @@ def score_wager(
     wager_type: str,
     stat: PlayerMatchStat | None,
     miss_points: int = POINTS_WAGER_MISS,
+    roster_resolved: bool = True,
 ) -> tuple[str, int]:
     """Return (wager_status, points) for one wager given the player's match stats.
 
-    A player who played 0 minutes is VOID (0 points). If we could not resolve the player to
-    any fixture stat (stat is None), we leave the wager PENDING rather than voiding it — an
-    unresolved player is a data problem, not a real 0-minute outcome, and PENDING lets the
-    next scoring tick retry instead of silently zeroing the wager.
+    A player who played 0 minutes is VOID (0 points). The same applies to a player we
+    couldn't resolve to any fixture stat (stat is None) *as long as* we did pull a real
+    roster for the match (``roster_resolved``): a player absent from a complete fixture
+    player list simply wasn't in the matchday squad — that's a genuine 0-minute outcome, so
+    VOID. Only when the roster itself is missing (empty/failed fetch) do we keep the wager
+    PENDING so the next scoring tick retries instead of voiding on bad data.
 
     ``miss_points`` is the penalty for an incorrect wager; it varies by match kickoff date
     (see WAGER_MISS_RULE_CHANGE_DATE), so the caller passes the value for this match.
     """
     if stat is None:
-        return WAGER_PENDING, 0
+        # Unresolved player: VOID if we have a real roster (player wasn't in the squad),
+        # otherwise PENDING (no roster yet — don't void on a failed fetch).
+        return (WAGER_VOID, 0) if roster_resolved else (WAGER_PENDING, 0)
     if stat.minutes == 0:
         return WAGER_VOID, 0
     if wager_type == WAGER_SCORE:
@@ -182,6 +187,10 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
         stat_by_name = {_normalize_name(s.player_name): s for s in stats.values()}
         stat_by_initial = {_initial_key(s.player_name): s for s in stats.values()}
         miss_points = _miss_points_for(match)
+        # A non-empty roster means the API gave us this fixture's full player list, so an
+        # unresolved player genuinely didn't feature (-> VOID). An empty roster means the
+        # fetch failed/returned nothing, so leave unresolved wagers PENDING to retry.
+        roster_resolved = bool(stats)
         for wager in wagers:
             if wager.player_id is not None and wager.player_id in stats:
                 stat = stats[wager.player_id]
@@ -190,7 +199,7 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
                     stat_by_initial.get(_initial_key(wager.player_name))
                 )
             wager.wager_status, wager.calculated_points = score_wager(
-                wager.wager_type, stat, miss_points
+                wager.wager_type, stat, miss_points, roster_resolved
             )
 
     logger.info("score_match: scored match %s", match.match_id)
