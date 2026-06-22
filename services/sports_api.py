@@ -48,6 +48,15 @@ class FixtureData:
 
 
 @dataclass(frozen=True)
+class FixtureOdds:
+    """Decimal "Match Winner" odds for a fixture (home win / draw / away win)."""
+
+    home: float
+    draw: float
+    away: float
+
+
+@dataclass(frozen=True)
 class PlayerMatchStat:
     api_player_id: int
     player_name: str
@@ -125,6 +134,41 @@ class SportsApiClient:
                 )
             )
         return fixtures
+
+    async def get_fixture_odds(self, fixture_id: int) -> FixtureOdds | None:
+        """Return pre-match "Match Winner" odds for one fixture, or None if unavailable.
+
+        Hits /odds for the configured league/season. The response carries one block per
+        fixture, each with many bookmakers; we use the first bookmaker that exposes a
+        complete "Match Winner" market (bet id 1, values Home/Draw/Away). Returns None when
+        the market is missing/incomplete or the API returns no odds — the caller then scores
+        the match flat (no multiplier).
+        """
+        response = await self._get(
+            "/odds",
+            {
+                "league": settings.LEAGUE_ID,
+                "season": settings.SEASON,
+                "fixture": fixture_id,
+            },
+        )
+
+        for block in response:
+            for bookmaker in block.get("bookmakers", []):
+                for bet in bookmaker.get("bets", []):
+                    if bet.get("id") != 1:  # 1 = "Match Winner" (1X2)
+                        continue
+                    odds: dict[str, float] = {}
+                    for v in bet.get("values", []):
+                        try:
+                            odds[v["value"]] = float(v["odd"])
+                        except (KeyError, TypeError, ValueError):
+                            continue
+                    if {"Home", "Draw", "Away"} <= odds.keys():
+                        return FixtureOdds(
+                            home=odds["Home"], draw=odds["Draw"], away=odds["Away"]
+                        )
+        return None
 
     async def get_fixture_player_stats(
         self, fixture_id: int

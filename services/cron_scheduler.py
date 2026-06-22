@@ -205,13 +205,23 @@ async def run_daily_reveal(day: dt.date) -> None:
         _, next_slate = await matches_service.get_current_matchday(session)
         next_open_at = matches_service.prediction_window_open_at(next_slate)
 
-    # One-off announcement of the wager rule changes, shown only on the reveal for 17 Jun 2026.
+    # One-off announcements, shown only on the reveal for a specific matchday.
     note = None
     if day == dt.date(2026, 6, 17):
         note = (
             "📣 <b>Wager updates from tomorrow!</b> A missed wager now costs only "
             "<b>−50</b> pts (down from −100), but you still get 100 pts for a correct wager! You can also now back a player to "
             "<b>get booked</b> (🟨 yellow or 🟥 red card) alongside SCORE and ASSIST. Wager away!"
+        )
+    elif day == dt.date(2026, 6, 23):
+        note = (
+            "📣 <b>Odds-based scoring starts next matchday!</b> From the next slate, your "
+            "result points are multiplied by the pre-match odds of the result you back — "
+            "calling an underdog is worth far more than a banker, and exact scorelines scale too.\n\n"
+            "To keep one lucky call from running away with the game, we use the <b>square root</b> "
+            "of the odds as the multiplier (e.g. odds 4.00 → ×2.00, odds 9.00 → ×3.00). The odds "
+            "and each result's multiplier are shown next to every fixture.\n\n"
+            "Wagers are unchanged (+100 / −50 / void). Pick boldly! 🎲"
         )
 
     # Send after the snapshot transaction has committed.
@@ -225,6 +235,13 @@ async def run_daily_reveal(day: dt.date) -> None:
 
 async def _run_daily_blast(day: dt.date) -> None:
     """DM every registered user the matchday slate with per-game Fill Out buttons."""
+    # Freeze pre-match odds onto this day's matches first, so the slate can show them and
+    # scoring uses them later. Only from the odds-scoring start date — earlier days score flat.
+    if day >= matches_service.ODDS_SCORING_START_DATE:
+        try:
+            await matches_service.freeze_odds_for_day(day)
+        except Exception:
+            logger.exception("Daily Blast: freezing odds failed for %s", day)
     async with session_scope() as session:
         member_ids = await predictions_service.get_all_member_ids(session)
     logger.info("Daily Blast: %d user(s) for %s", len(member_ids), day)

@@ -33,7 +33,11 @@ CREATE TABLE IF NOT EXISTS matches (
     kickoff_time TIMESTAMP WITH TIME ZONE NOT NULL,
     home_score_90min INT DEFAULT NULL,
     away_score_90min INT DEFAULT NULL,
-    status VARCHAR(20) DEFAULT 'SCHEDULED' CHECK (status IN ('SCHEDULED', 'IN_PROGRESS', 'FINISHED'))
+    status VARCHAR(20) DEFAULT 'SCHEDULED' CHECK (status IN ('SCHEDULED', 'IN_PROGRESS', 'FINISHED')),
+    -- Frozen pre-match "Match Winner" odds (see migration 003). NULL = score flat.
+    odds_home NUMERIC(6,2) DEFAULT NULL,
+    odds_draw NUMERIC(6,2) DEFAULT NULL,
+    odds_away NUMERIC(6,2) DEFAULT NULL
 );
 
 -- 5. User Match Predictions Table

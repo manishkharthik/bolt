@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import unicodedata
 
 from sqlalchemy import select
@@ -54,6 +55,14 @@ POINTS_WAGER_MISS_LEGACY = -100  # matches kicking off before the rule change
 # already-played games are scored under the rule that was in force when they were played.
 WAGER_MISS_RULE_CHANGE_DATE = dt.date(2026, 6, 18)
 
+# Odds-based result scoring: from this date (SGT) onward, result points are multiplied by
+# sqrt(odd) of the predicted outcome (home/draw/away) using the frozen pre-match odds on the
+# match row. Earlier matches keep flat scoring so already-played games aren't re-scored under
+# a rule that wasn't in force. First game under the new rule: Portugal vs Uzbekistan, 2026-06-24.
+# Wagers are unaffected — only match-result points scale. sqrt dampens the swing (a 7.30
+# underdog is ~x2.7, a 1.45 favourite ~x1.2) so one lucky call can't dwarf the ±100/±50 wagers.
+ODDS_SCORING_START_DATE = dt.date(2026, 6, 24)
+
 
 def _sign(diff: int) -> int:
     return (diff > 0) - (diff < 0)
@@ -64,15 +73,48 @@ def score_prediction(
     predicted_away: int,
     actual_home: int,
     actual_away: int,
+    multiplier: float = 1.0,
 ) -> int:
-    """Points for one scoreline prediction against the final 90-minute score."""
+    """Points for one scoreline prediction against the final 90-minute score.
+
+    ``multiplier`` scales the awarded points (odds-based scoring); it defaults to 1.0 (flat).
+    The caller derives it from the predicted outcome's frozen odd via ``_result_multiplier``.
+    """
     correct_result = _sign(predicted_home - predicted_away) == _sign(
         actual_home - actual_away
     )
     if not correct_result:
         return 0
     exact = predicted_home == actual_home and predicted_away == actual_away
-    return POINTS_CORRECT_RESULT + (POINTS_EXACT_BONUS if exact else 0)
+    base = POINTS_CORRECT_RESULT + (POINTS_EXACT_BONUS if exact else 0)
+    return round(base * multiplier)
+
+
+def _result_multiplier(match: Match, predicted_home: int, predicted_away: int) -> float:
+    """The result-points multiplier for a prediction on this match.
+
+    1.0 (flat) for matches before ODDS_SCORING_START_DATE, or when the predicted outcome's
+    odd wasn't frozen (NULL — fetch failed / market missing). Otherwise sqrt(odd) of the
+    predicted outcome: home win, draw, or away win.
+    """
+    kickoff_date = match.kickoff_time.astimezone(settings.tzinfo).date()
+    if kickoff_date < ODDS_SCORING_START_DATE:
+        return 1.0
+    outcome = _sign(predicted_home - predicted_away)
+    if outcome > 0:
+        odd = match.odds_home
+    elif outcome < 0:
+        odd = match.odds_away
+    else:
+        odd = match.odds_draw
+    if odd is None:
+        logger.info(
+            "score: match %s has no frozen odds for outcome %d; scoring flat",
+            match.match_id,
+            outcome,
+        )
+        return 1.0
+    return math.sqrt(float(odd))
 
 
 def _normalize_name(name: str) -> str:
@@ -162,11 +204,15 @@ async def score_match(session: AsyncSession, match: Match) -> bool:
         select(Prediction).where(Prediction.match_id == match.match_id)
     )
     for prediction in pred_rows.scalars().all():
+        multiplier = _result_multiplier(
+            match, prediction.predicted_home_score, prediction.predicted_away_score
+        )
         prediction.calculated_points = score_prediction(
             prediction.predicted_home_score,
             prediction.predicted_away_score,
             match.home_score_90min,
             match.away_score_90min,
+            multiplier,
         )
 
     # 2) Wagers — only hit the player-stats API while wagers are still unresolved. Once they're

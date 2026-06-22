@@ -13,6 +13,7 @@ from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -97,6 +98,10 @@ class Match(Base):
     home_score_90min: Mapped[int | None] = mapped_column(Integer, default=None)
     away_score_90min: Mapped[int | None] = mapped_column(Integer, default=None)
     status: Mapped[str] = mapped_column(String(20), default=MATCH_SCHEDULED)
+    # Frozen pre-match "Match Winner" odds (migration 003). NULL = score this match flat.
+    odds_home: Mapped[float | None] = mapped_column(Numeric(6, 2), default=None)
+    odds_draw: Mapped[float | None] = mapped_column(Numeric(6, 2), default=None)
+    odds_away: Mapped[float | None] = mapped_column(Numeric(6, 2), default=None)
 
 
 class Prediction(Base):

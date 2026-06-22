@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import html
+import math
 
 from database.models import (
     MATCH_FINISHED,
@@ -86,16 +87,37 @@ def _wagers_text(wagers: list[Wager]) -> str:
     return text
 
 
+def _odds_line(match: Match) -> str | None:
+    """One-line odds + points multiplier for a match, or None if odds aren't frozen.
+
+    Shows raw "Match Winner" odds and the sqrt-based points multiplier each outcome earns,
+    so users see why backing the underdog is worth more.
+    """
+    if match.odds_home is None or match.odds_draw is None or match.odds_away is None:
+        return None
+    h, d, a = float(match.odds_home), float(match.odds_draw), float(match.odds_away)
+    return (
+        "• 💰 Odds: "
+        f"{esc(match.home_team)} {h:.2f} (×{math.sqrt(h):.2f}) · "
+        f"Draw {d:.2f} (×{math.sqrt(d):.2f}) · "
+        f"{esc(match.away_team)} {a:.2f} (×{math.sqrt(a):.2f})"
+    )
+
+
 def _slate_blocks(entries: list[DayEntry]) -> str:
     blocks = []
     for i, e in enumerate(entries, start=1):
         m = e.match
-        blocks.append(
+        lines = [
             f"{ordinal(i)} <b>{esc(m.home_team)} vs {esc(m.away_team)}</b> "
-            f"(⏰ {fmt_time(m.kickoff_time)})\n"
-            f"• Prediction: {_pred_text(e.prediction)}\n"
-            f"• Wagers: {_wagers_text(e.wagers)}"
-        )
+            f"(⏰ {fmt_time(m.kickoff_time)})"
+        ]
+        odds = _odds_line(m)
+        if odds:
+            lines.append(odds)
+        lines.append(f"• Prediction: {_pred_text(e.prediction)}")
+        lines.append(f"• Wagers: {_wagers_text(e.wagers)}")
+        blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
 
@@ -133,11 +155,16 @@ def slacker_warning(day: dt.date, entries: list[DayEntry]) -> str:
 
 # --- Post-Match Analysis -----------------------------------------------------
 
-def _result_label(prediction: Prediction) -> str:
-    pts = prediction.calculated_points
-    if pts >= 200:
+def _result_label(prediction: Prediction, match: Match) -> str:
+    # Derived from the scoreline, not the points: odds-based scoring scales the points so a
+    # points threshold no longer cleanly distinguishes a perfect from a merely-correct result.
+    ph, pa = prediction.predicted_home_score, prediction.predicted_away_score
+    ah, aa = match.home_score_90min, match.away_score_90min
+    if ah is None or aa is None:
+        return "Incorrect"
+    if ph == ah and pa == aa:
         return "Perfect Scoreline!"
-    if pts >= 50:
+    if (ph > pa) == (ah > aa) and (ph < pa) == (ah < aa):
         return "Correct Result, Incorrect Scoreline"
     return "Incorrect"
 
@@ -172,7 +199,7 @@ def post_match(match: Match, prediction: Prediction | None, wagers: list[Wager])
         lines.append(
             f"• Your Guess: {prediction.predicted_home_score} - {prediction.predicted_away_score}"
         )
-        lines.append(f"• Outcome: {_result_label(prediction)}")
+        lines.append(f"• Outcome: {_result_label(prediction, match)}")
         lines.append(f"👉 Prediction Score: {pred_pts:+d} pts")
 
     lines.append("")
@@ -234,6 +261,9 @@ def matchday(day: dt.date, matches: list[Match]) -> str:
     for i, m in enumerate(matches, start=1):
         lines.append(f"{ordinal(i)} <b>{esc(m.home_team)} vs {esc(m.away_team)}</b>")
         lines.append(f"⏰ Kickoff: <code>{fmt_time(m.kickoff_time)}</code>")
+        odds = _odds_line(m)
+        if odds:
+            lines.append(odds)
         lines.append("")
     lines.append(SEP)
     lines.append(
@@ -284,7 +314,7 @@ def breakdown(day: dt.date, entries: list[DayEntry], now: dt.datetime) -> str:
         else:
             tag = ""
             if m.status == MATCH_FINISHED:
-                tag = f" ({_result_label(e.prediction)} {e.prediction.calculated_points:+d} pts)"
+                tag = f" ({_result_label(e.prediction, m)} {e.prediction.calculated_points:+d} pts)"
             elif e.locked:
                 tag = " (Locked)"
             lines.append(
@@ -344,7 +374,7 @@ def recap(day: dt.date, entries: list[DayEntry], now: dt.datetime) -> str:
         else:
             tag = ""
             if m.status == MATCH_FINISHED:
-                tag = f" ({_result_label(e.prediction)} {e.prediction.calculated_points:+d} pts)"
+                tag = f" ({_result_label(e.prediction, m)} {e.prediction.calculated_points:+d} pts)"
             lines.append(
                 f"• Your Prediction: {e.prediction.predicted_home_score} - "
                 f"{e.prediction.predicted_away_score}{tag}"
@@ -595,6 +625,11 @@ def scoring() -> str:
         f"• Exact scoreline: <b>+{POINTS_EXACT_BONUS}</b> more "
         f"(<b>{exact_total}</b> pts total)",
         "• Wrong result: <b>0</b> pts",
+        "",
+        "🎲 <b>ODDS MULTIPLIER</b>",
+        "Your prediction points are multiplied by the pre-match odds of the result you back: "
+        "back an underdog and a correct call is worth far more than backing the favourite. "
+        "Odds are shown next to each fixture, with the multiplier each result earns.",
         "",
         "🎯 <b>PLAYER WAGERS — go big or go home</b>",
         "Wagers are your wildcard. Unlike predictions, they swing <i>both ways</i>: nail "

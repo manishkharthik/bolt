@@ -22,6 +22,11 @@ from config.settings import settings
 from database.models import MATCH_FINISHED, Match
 from services.sports_api import SportsApiError, sports_api
 
+# Odds-based scoring starts on this SGT date (first game: Portugal vs Uzbekistan, 2026-06-24).
+# Kept in sync with services.scoring_engine.ODDS_SCORING_START_DATE — earlier matchdays don't
+# need odds fetched at all. Imported here to gate the freeze; the scoring engine owns the rule.
+ODDS_SCORING_START_DATE = dt.date(2026, 6, 24)
+
 logger = logging.getLogger(__name__)
 
 LOCK_LEAD_MINUTES = 60
@@ -232,3 +237,37 @@ async def sync_fixtures() -> list[int]:
         len(newly_finished),
     )
     return newly_finished
+
+
+async def freeze_odds_for_day(day: dt.date) -> int:
+    """Fetch and freeze pre-match "Match Winner" odds for a day's matches. Returns count frozen.
+
+    Called at Daily Blast time so the daily slate can show odds. Freeze-once: only matches
+    whose odds_home is still NULL are fetched, so re-running never overwrites frozen odds —
+    that keeps odds-based scoring deterministic and idempotent. A failed fetch for one match
+    is logged and skipped (odds stay NULL → that match scores flat and a later run retries).
+    """
+    frozen = 0
+    async with session_scope() as session:
+        slate = await get_day_slate(session, day)
+        for match in slate:
+            if match.odds_home is not None:
+                continue  # already frozen — never overwrite
+            try:
+                odds = await sports_api.get_fixture_odds(match.match_id)
+            except SportsApiError:
+                logger.exception(
+                    "freeze_odds_for_day: odds fetch failed for match %s", match.match_id
+                )
+                continue
+            if odds is None:
+                logger.info(
+                    "freeze_odds_for_day: no Match Winner odds for match %s", match.match_id
+                )
+                continue
+            match.odds_home = odds.home
+            match.odds_draw = odds.draw
+            match.odds_away = odds.away
+            frozen += 1
+    logger.info("freeze_odds_for_day: froze odds for %d match(es) on %s", frozen, day)
+    return frozen
