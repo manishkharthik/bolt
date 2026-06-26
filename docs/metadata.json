@@ -1,0 +1,19 @@
+{
+    "generation_info": {
+        "timestamp": "2026-06-26T21:02:08.783921",
+        "main_model": "claude-sonnet-4-6",
+        "generator_version": "1.0.1",
+        "repo_path": "/Users/shru/Desktop/wcbot",
+        "commit_id": null
+    },
+    "statistics": {
+        "total_components": 179,
+        "leaf_nodes": 21,
+        "max_depth": 2
+    },
+    "files_generated": [
+        "overview.md",
+        "module_tree.json",
+        "first_module_tree.json"
+    ]
+}
